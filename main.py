@@ -11,18 +11,15 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import func
 
 from forms import RegisterForm, LoginForm, RidePostForm, ProfileForm
-
-# ---- extensions (no app yet) ----
 db = SQLAlchemy()
 login_manager = LoginManager()
 
-# rate limiting
+#rate limiting
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
 
 
-# ---- helpers ----
 def flash_first_error(form):
     """Flash the first validation error; prefer email to surface 'CDU email only'."""
     if not form.errors:
@@ -48,10 +45,6 @@ def create_app():
 
     # ---------- Core config ----------
     app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", "dev-only-change-me")
-
-    # ✅ Deployment-safe DB config:
-    # - Use DATABASE_URL if provided (e.g., Postgres in the future)
-    # - Else use an ABSOLUTE path to sqlite (works on PythonAnywhere)
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -62,32 +55,32 @@ def create_app():
 
     app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-    # Security/UX sprinkles
+    #Security
     app.config['SESSION_COOKIE_HTTPONLY'] = True
     app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
     app.config['REMEMBER_COOKIE_HTTPONLY'] = True
     app.config['REMEMBER_COOKIE_SAMESITE'] = 'Lax'
-    # mark cookies secure when served via HTTPS (prod; PythonAnywhere is HTTPS)
+    #mark cookies secure when served via HTTPS 
     app.config['SESSION_COOKIE_SECURE']  = os.environ.get("COOKIE_SECURE", "0") == "1"
     app.config['REMEMBER_COOKIE_SECURE'] = os.environ.get("COOKIE_SECURE", "0") == "1"
-    # session lifetime
+    #session lifetime
     app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(hours=8)
-    # CSRF token age (Flask-WTF default is forever; set if you want)
+    #CSRF token age
     app.config['WTF_CSRF_TIME_LIMIT'] = 60 * 60 * 8  # 8 hours
 
-    # Optional: enforce CDU emails
+    #Checks CDU emails
     app.config['ENFORCE_CDU_EMAIL'] = os.environ.get("ENFORCE_CDU_EMAIL", "1") == "1"
     app.config['CDU_EMAIL_DOMAINS'] = ["cdu.edu.au", "students.cdu.edu.au", "student.cdu.edu.au"]
 
-    # ---------- init extensions ----------
+    #init extensions
     db.init_app(app)
     login_manager.init_app(app)
     limiter.init_app(app)
     login_manager.login_view = "login"
-    login_manager.login_message = None          # disable default 'Please log in...' flash
-    login_manager.needs_refresh_message = None  # disable re-auth flash
+    login_manager.login_message = None          
+    login_manager.needs_refresh_message = None  
 
-    # ---------- models ----------
+    #models
     class User(db.Model, UserMixin):
         id = db.Column(db.Integer, primary_key=True)
         full_name = db.Column(db.String(50), nullable=False)
@@ -112,10 +105,9 @@ def create_app():
     def load_user(user_id):
         return User.query.get(int(user_id))
 
-    # ---------- security headers ----------
+    #security headers
     @app.after_request
     def add_security_headers(resp):
-        # HSTS only when secure
         if request.is_secure:
             resp.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains; preload")
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -124,14 +116,14 @@ def create_app():
         resp.headers.setdefault("Permissions-Policy", "geolocation=(), microphone=(), camera=()")
         return resp
 
-    # ---------- error handlers ----------
+    #error handlers 
     @app.errorhandler(429)
     def ratelimit_handler(e):
         flash("Too many requests. Please wait a moment and try again.", "warning")
-        # try to go back to the page the user was on
+        
         return redirect(request.referrer or url_for("home"))
 
-    # ---------- routes ----------
+    #routes 
     @app.route("/", methods=["GET"])
     @login_required
     def home():
@@ -140,7 +132,7 @@ def create_app():
 
     @app.route("/post", methods=["GET", "POST"])
     @login_required
-    @limiter.limit("20/hour;100/day")  # reasonable for posting
+    @limiter.limit("20/hour;100/day") 
     def post_ride():
         form = RidePostForm()
         if form.validate_on_submit():
@@ -161,7 +153,6 @@ def create_app():
             flash_first_error(form)
         return render_template("posting_page.html", form=form)
 
-    # REGISTER — auto-login after success
     @app.route("/register", methods=["GET", "POST"])
     @limiter.limit("5/minute;15/hour")
     def register():
@@ -173,7 +164,7 @@ def create_app():
         if form.validate_on_submit():
             email_l = form.email.data.lower().strip()
 
-            # case-insensitive duplicate check
+            
             existing = User.query.filter(func.lower(User.email) == email_l).first()
             if existing:
                 flash("Email already registered.", "danger")
@@ -189,19 +180,14 @@ def create_app():
             )
             db.session.add(u)
             db.session.commit()
-
-            # auto-login right after registration
             login_user(u, remember=True)
             flash(f"Welcome to FouzFleet, {u.full_name.split()[0]}!", "success")
             return redirect(url_for("home"))
 
         elif request.method == "POST":
-            # show the first validation error (e.g., "CDU email only")
             flash_first_error(form)
-
         return render_template("signup_page.html", form=form)
 
-    # LOGIN
     @app.route("/login", methods=["GET", "POST"])
     @limiter.limit("10/minute;50/hour")
     def login():
@@ -233,7 +219,7 @@ def create_app():
         flash("You have been logged out.", "info")
         return redirect(url_for("login"))
 
-    # PROFILE
+
     @app.route("/profile", methods=["GET", "POST"])
     @login_required
     @limiter.limit("30/hour")
@@ -255,16 +241,15 @@ def create_app():
             flash_first_error(form)
         return render_template("profile_page.html", form=form)
 
-    # ✅ Ensure tables exist when running under WSGI (PythonAnywhere)
+    
     with app.app_context():
         db.create_all()
 
     return app
 
 
-# expose module-level app for WSGI/Flask CLI
+
 app = create_app()
 
 if __name__ == "__main__":
-    # local dev entrypoint
     app.run(debug=True)

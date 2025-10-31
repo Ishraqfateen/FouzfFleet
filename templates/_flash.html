@@ -2,7 +2,6 @@
 {% with msgs = get_flashed_messages(with_categories=true) %}
   {% if msgs %}
     <div class="flash_container">
-      {# show ONLY the most-recent message (cleanest UX) #}
       {% set last = msgs[-1] %}
       <div class="flash flash-{{ last[0] }}">{{ last[1] }}</div>
     </div>

@@ -20,7 +20,7 @@ class RegisterForm(FlaskForm):
             allowed = current_app.config.get("CDU_EMAIL_DOMAINS", CDU_DEFAULT_DOMAINS)
             email_l = field.data.lower().strip()
             if not any(email_l.endswith("@"+d) for d in allowed):
-                raise ValidationError("CDU email only")  # <-- exact toast text
+                raise ValidationError("CDU email only")  
 
     def validate_password(self, field):
         pwd = field.data
