@@ -23,8 +23,7 @@ class RegisterForm(FlaskForm):
                 raise ValidationError("CDU email only")  
 
     def validate_password(self, field):
-        pwd = field.data
-        # at least one letter and one digit; >=8 chars already enforced
+        pwd = field.data 
         if not re.search(r"[A-Za-z]", pwd) or not re.search(r"\d", pwd):
             raise ValidationError("Password must include at least one letter and one number.")
 
@@ -56,7 +55,7 @@ class ProfileForm(FlaskForm):
             allowed = current_app.config.get("CDU_EMAIL_DOMAINS", CDU_DEFAULT_DOMAINS)
             email_l = field.data.lower().strip()
             if not any(email_l.endswith("@"+d) for d in allowed):
-                raise ValidationError("CDU email only")  # <-- exact toast text
+                raise ValidationError("CDU email only")  
 
     def validate_phone(self, field):
         if not re.fullmatch(r"[0-9+\-\s()]{10}", field.data.strip()):

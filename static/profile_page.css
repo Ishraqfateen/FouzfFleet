@@ -83,7 +83,7 @@
   position: fixed;
   left: 240px;
 }
-/* reuse your signup box styling */
+
 .signup_box{
   max-width: 520px;
   margin: 24px auto;
@@ -123,12 +123,12 @@
 }
 .flash_container{
   position: fixed;
-  top: 66px;          /* just below your header */
+  top: 66px;          
   left: 0; right: 0;
   display: flex;
   justify-content: center;
   z-index: 9999;
-  pointer-events: none;    /* clicks go through unless on the toast */
+  pointer-events: none;    
 }
 
 .flash{
@@ -168,7 +168,7 @@ input.is-invalid, textarea.is-invalid{
 
 }
 
-/* categories you might use: success / info / warning / danger */
+
 .flash-success { background: #0b7a28; }
 .flash-info    { background: #1f4b99; }
 .flash-warning { background: #9a6b00; }
