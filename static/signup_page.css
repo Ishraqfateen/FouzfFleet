@@ -212,12 +212,4 @@ input.is-invalid, textarea.is-invalid{
 .flash-warning { background:#9a6b00; }
 .flash-danger  { background:#9a1f1f; }
 
-@media (max-width: 768px) {
-  .bgimg1 {
-    display: none;
-  }
 
-  body {
-    background-color: #faf7f2; /* light off-white tone for readability */
-  }
-}
