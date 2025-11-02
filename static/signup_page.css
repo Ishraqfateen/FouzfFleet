@@ -1,3 +1,11 @@
+body {
+  background-image: url('static/images/images/20250802_1100_Retro Car Mobile Display_simple_compose_01k1m6cq07es49jvpnxccjq7b4.png');
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+}
+
+
 .header{
   display: flex;
   background-color: rgb(31, 31, 31);
@@ -212,3 +220,13 @@ input.is-invalid, textarea.is-invalid{
 .flash-warning { background:#9a6b00; }
 .flash-danger  { background:#9a1f1f; }
 
+@media (max-width: 768px) {
+  .login-container, .signup-container {
+    width: 90%;
+    margin: 40px auto;
+  }
+
+  body {
+    background-attachment: scroll; /* Prevents zoom issues on mobile */
+  }
+}

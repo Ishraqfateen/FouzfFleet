@@ -1,3 +1,10 @@
+body {
+  background-image: url('static/images/20250801_1952_Colorful Ride Sharing Scene_simple_compose_01k1jjeveff5zv1ea6e03yt1q8.png');
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+}
+
 .header{
   display: flex;
   background-color: rgb(31, 31, 31);
@@ -124,3 +131,14 @@
 .flash-info    { background:#1f4b99; }
 .flash-warning { background:#9a6b00; }
 .flash-danger  { background:#9a1f1f; }
+
+@media (max-width: 768px) {
+  .login-container, .signup-container {
+    width: 90%;
+    margin: 40px auto;
+  }
+
+  body {
+    background-attachment: scroll; /* Prevents zoom issues on mobile */
+  }
+}
