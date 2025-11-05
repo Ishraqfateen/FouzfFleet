@@ -1,9 +1,8 @@
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 from urllib.parse import urlparse, urljoin
 
 from flask import Flask, render_template, redirect, url_for, flash, request, session
-
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user, UserMixin
@@ -11,13 +10,12 @@ from flask_login import (
 from werkzeug.security import generate_password_hash, check_password_hash
 from sqlalchemy import func
 
-from itsdangerous import URLSafeTimedSerializer
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
 from flask_mail import Mail, Message
 
-# forms.py imports
 from forms import RegisterForm, LoginForm, RidePostForm, ProfileForm
 
-# ------------ GLOBAL EXTENSIONS ------------
+# ---------- GLOBAL EXTENSIONS ----------
 db = SQLAlchemy()
 login_manager = LoginManager()
 mail = Mail()
@@ -27,64 +25,31 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 limiter = Limiter(key_func=get_remote_address, storage_uri="memory://")
 
-# Token serializer (uses SECRET_KEY)
-serializer = URLSafeTimedSerializer(os.environ.get("SECRET_KEY", "dev-secret"))
 
 
-# ======================================================
-# HELPER FUNCTIONS
-# ======================================================
 
+# ---------- HELPERS ----------
 def flash_first_error(form):
-    """Flash first WTForms validation error message"""
-    if not form.errors:
-        return
-    field, errors = next(iter(form.errors.items()))
-    flash(errors[0], "danger")
+    if form.errors:
+        field, errors = next(iter(form.errors.items()))
+        flash(errors[0], "danger")
 
 
 def is_safe_url(target: str) -> bool:
-    """Security check for redirect URL"""
     ref = urlparse(request.host_url)
     test = urlparse(urljoin(request.host_url, target))
-    return (test.scheme in ("http", "https")) and (ref.netloc == test.netloc)
+    return test.scheme in ("http", "https") and ref.netloc == test.netloc
 
 
-def send_verification_email(user):
-    """Send email verification link"""
-    token = serializer.dumps(user.email.lower().strip(), salt="email-confirm")
-    verify_url = url_for("verify_email", token=token, _external=True)
-
-    msg = Message(
-        subject="Verify Your FouzFleet Account",
-        recipients=[user.email],
-        body=f"""
-Hey {user.full_name},
-
-Welcome to FouzFleet! 🎉
-
-Click below to verify your account:
-{verify_url}
-
-This link expires in 1 hour.
-
-If you did not sign up, just ignore this email.
-"""
-    )
-    mail.send(msg)
-
-
-# ======================================================
-# APP FACTORY
-# ======================================================
-
+# ---------- APP FACTORY ----------
 def create_app():
     app = Flask(__name__)
+    app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-only-change-me")
 
-    # --- SECRET ---
-    app.config['SECRET_KEY'] = os.environ.get("SECRET_KEY", "dev-only-change-me")
+    # Token generator (signed data stored temporarily)
+    serializer = URLSafeTimedSerializer(os.environ.get("SECRET_KEY", "dev-secret"))
 
-    # --- DATABASE ---
+    # DB setup
     db_url = os.environ.get("DATABASE_URL")
     if not db_url:
         BASE_DIR = os.path.abspath(os.path.dirname(__file__))
@@ -93,10 +58,10 @@ def create_app():
     if db_url.startswith("postgres://"):
         db_url = db_url.replace("postgres://", "postgresql://", 1)
 
-    app.config['SQLALCHEMY_DATABASE_URI'] = db_url
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    app.config["SQLALCHEMY_DATABASE_URI"] = db_url
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 
-    # --- EMAIL (GMAIL SMTP) ---
+    # Email config
     app.config["MAIL_SERVER"] = "smtp.gmail.com"
     app.config["MAIL_PORT"] = 587
     app.config["MAIL_USE_TLS"] = True
@@ -105,43 +70,22 @@ def create_app():
     app.config["MAIL_DEFAULT_SENDER"] = os.environ.get("MAIL_USERNAME")
     mail.init_app(app)
 
-    # --- COOKIE SECURITY ---
-    app.config['SESSION_COOKIE_HTTPONLY'] = True
-    app.config['SESSION_COOKIE_SAMESITE'] = "Lax"
-    app.config['REMEMBER_COOKIE_HTTPONLY'] = True
-    app.config['REMEMBER_COOKIE_SAMESITE'] = "Lax"
-    app.config['SESSION_COOKIE_SECURE'] = os.environ.get("COOKIE_SECURE", "0") == "1"
-    app.config['REMEMBER_COOKIE_SECURE'] = os.environ.get("COOKIE_SECURE", "0") == "1"
+    # Security cookies
+    app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+    app.config["REMEMBER_COOKIE_SAMESITE"] = "Lax"
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["REMEMBER_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SECURE"] = os.environ.get("COOKIE_SECURE", "0") == "1"
+    app.config["REMEMBER_COOKIE_SECURE"] = os.environ.get("COOKIE_SECURE", "0") == "1"
 
-    app.config['WTF_CSRF_TIME_LIMIT'] = 60 * 60 * 8   # 8 hours
-
-    # --- CDU-only email enforcement ---
-    app.config["ENFORCE_CDU_EMAIL"] = os.environ.get("ENFORCE_CDU_EMAIL", "1") == "1"
-    app.config["CDU_EMAIL_DOMAINS"] = [
-        "cdu.edu.au",
-        "students.cdu.edu.au",
-        "student.cdu.edu.au"
-    ]
-
-    # Init
+    # Init extensions
     db.init_app(app)
     login_manager.init_app(app)
-
-    @login_manager.unauthorized_handler
-    def unauthorized():
-        logout_user()
-        session.clear()
-        return redirect(url_for("login"))
-
     limiter.init_app(app)
     login_manager.login_view = "login"
     login_manager.login_message = None
 
-
-    # ======================================================
-    # MODELS
-    # ======================================================
-
+    # ---------- MODELS ----------
     class User(db.Model, UserMixin):
         id = db.Column(db.Integer, primary_key=True)
         full_name = db.Column(db.String(50), nullable=False)
@@ -149,8 +93,6 @@ def create_app():
         phone = db.Column(db.String(15), nullable=False)
         dob = db.Column(db.Date, nullable=False)
         password_hash = db.Column(db.String(255), nullable=False)
-        verified = db.Column(db.Boolean, default=False)
-        posts = db.relationship("Post", backref="author", lazy=True)
 
     class Post(db.Model):
         id = db.Column(db.Integer, primary_key=True)
@@ -168,9 +110,7 @@ def create_app():
         return User.query.get(int(user_id))
 
 
-    # ======================================================
-    # ROUTES
-    # ======================================================
+    # ---------- ROUTES ----------
 
     @app.route("/")
     @login_required
@@ -178,14 +118,10 @@ def create_app():
         posts = Post.query.order_by(Post.created_at.desc()).all()
         return render_template("home_page.html", posts=posts)
 
+
     @app.route("/register", methods=["GET", "POST"])
     @limiter.limit("5/minute;15/hour")
     def register():
-
-        # ✅ Only clear if user already logged in
-        if current_user.is_authenticated:
-            logout_user()
-            session.clear()
 
         form = RegisterForm()
 
@@ -194,40 +130,77 @@ def create_app():
 
             existing = User.query.filter(func.lower(User.email) == email_l).first()
             if existing:
-                flash("Email already registered.", "danger")
-                return redirect(url_for("register"))
+                flash("Email already registered. Log in instead.", "warning")
+                return redirect(url_for("login"))
 
-            u = User(
-                full_name=form.full_name.data.strip(),
-                email=email_l,
-                phone=form.phone.data.strip(),
-                dob=form.dob.data,
-                password_hash=generate_password_hash(form.password.data),
-                verified=False
+            # ✅ Store form data in token, DO NOT create user yet
+            token = serializer.dumps({
+                "full_name": form.full_name.data.strip(),
+                "email": email_l,
+                "phone": form.phone.data.strip(),
+                "dob": form.dob.data.strftime("%Y-%m-%d"),
+                "password_hash": generate_password_hash(form.password.data)
+            }, salt="register-temp")
+
+            verify_url = url_for("verify_email", token=token, _external=True)
+
+            msg = Message(
+                subject="Verify Your FouzFleet Account",
+                recipients=[email_l],
+                body=f"""
+Hey {form.full_name.data},
+
+Click here to activate your account:
+{verify_url}
+
+Expires in 1 hour.
+"""
             )
+            mail.send(msg)
 
-            db.session.add(u)
-            db.session.commit()
-
-            send_verification_email(u)
-
-            flash("✅ Account created! Check your CDU email to verify.", "success")
+            flash("✅ Verification link sent! Check your CDU email.", "success")
             return redirect(url_for("login"))
-
-        elif request.method == "POST":
-            flash_first_error(form)
 
         return render_template("signup_page.html", form=form)
 
+
+    @app.route("/verify/<token>")
+    def verify_email(token):
+        try:
+            data = serializer.loads(token, salt="register-temp", max_age=3600)
+        except SignatureExpired:
+            flash("❌ Verification link expired.", "danger")
+            return redirect(url_for("register"))
+        except BadSignature:
+            flash("❌ Invalid link.", "danger")
+            return redirect(url_for("register"))
+
+        # ✅ Create user now
+        user = User.query.filter_by(email=data["email"]).first()
+        if not user:
+            user = User(
+                full_name=data["full_name"],
+                email=data["email"],
+                phone=data["phone"],
+                dob=datetime.strptime(data["dob"], "%Y-%m-%d").date(),
+                password_hash=data["password_hash"]
+            )
+            db.session.add(user)
+            db.session.commit()
+
+        # ✅ Auto login after verification
+        login_user(user, remember=True)
+        flash("✅ Account verified & created!", "success")
+        return redirect(url_for("home"))
 
 
     @app.route("/login", methods=["GET", "POST"])
     @limiter.limit("10/minute;50/hour")
     def login():
+        form = LoginForm()
+
         if current_user.is_authenticated:
             return redirect(url_for("home"))
-
-        form = LoginForm()
 
         if form.validate_on_submit():
             user = User.query.filter(
@@ -236,38 +209,18 @@ def create_app():
 
             if user and check_password_hash(user.password_hash, form.password.data):
 
-                if not user.verified:
-                    flash("Verify your email first — check inbox.", "warning")
-                    return redirect(url_for("login"))
-
                 login_user(user, remember=True)
+                flash(f"Welcome, {user.full_name.split()[0]}!", "success")
 
                 next_page = request.args.get("next")
                 if next_page and is_safe_url(next_page):
                     return redirect(next_page)
 
-                flash(f"Welcome back, {user.full_name.split()[0]}!", "success")
                 return redirect(url_for("home"))
 
             flash("Invalid email or password.", "danger")
 
         return render_template("login_page.html", form=form)
-
-
-    @app.route("/verify/<token>")
-    def verify_email(token):
-        try:
-            email = serializer.loads(token, salt="email-confirm", max_age=3600)
-        except:
-            flash("❌ Link expired or invalid.", "danger")
-            return redirect(url_for("login"))
-
-        user = User.query.filter_by(email=email).first_or_404()
-        user.verified = True
-        db.session.commit()
-
-        flash("✅ Email verified! You may now login.", "success")
-        return redirect(url_for("login"))
 
 
     @app.route("/logout")
@@ -280,7 +233,6 @@ def create_app():
 
     @app.route("/post", methods=["GET", "POST"])
     @login_required
-    @limiter.limit("20/hour;100/day")
     def post_ride():
         form = RidePostForm()
         if form.validate_on_submit():
@@ -291,11 +243,12 @@ def create_app():
                 days=form.days.data.strip(),
                 seats=form.seats.data,
                 notes=(form.notes.data or "").strip(),
-                author=current_user,
+                user_id=current_user.id
             )
             db.session.add(p)
             db.session.commit()
-            flash("Ride posted!", "success")
+
+            flash("✅ Ride posted!", "success")
             return redirect(url_for("home"))
 
         return render_template("posting_page.html", form=form)
@@ -305,41 +258,16 @@ def create_app():
     @login_required
     def delete_post(post_id):
         post = Post.query.get_or_404(post_id)
-        if post.author != current_user:
+
+        if post.user_id != current_user.id:
             flash("You can only delete your own posts.", "danger")
             return redirect(url_for("home"))
 
         db.session.delete(post)
         db.session.commit()
 
-        flash("Post deleted.", "info")
+        flash("Ride deleted.", "info")
         return redirect(url_for("home"))
-
-
-    @app.route("/profile", methods=["GET", "POST"])
-    @login_required
-    @limiter.limit("30/hour")
-    def profile():
-        form = ProfileForm(obj=current_user)
-
-        if form.validate_on_submit():
-            new_email = form.email.data.lower().strip()
-
-            if (
-                new_email != current_user.email
-                and User.query.filter(User.email == new_email, User.id != current_user.id).first()
-            ):
-                flash("Email already used by someone else.", "danger")
-                return redirect(url_for("profile"))
-
-            current_user.email = new_email
-            current_user.phone = form.phone.data.strip()
-            db.session.commit()
-
-            flash("Profile updated.", "success")
-            return redirect(url_for("profile"))
-
-        return render_template("profile_page.html", form=form)
 
 
     with app.app_context():
@@ -352,6 +280,7 @@ app = create_app()
 
 if __name__ == "__main__":
     app.run(debug=True)
+
 
 
 
