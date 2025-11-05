@@ -17,7 +17,7 @@ login_manager = LoginManager()
 
 def create_app():
     app = Flask(__name__)
-    app.config["SECRET_KEY"] = "dev-secret"
+    app.config["SECRET_KEY"] = "26d109238d49ad800b3d13fda23ce069ba44bceb3653132b14a5154c4bb60c85"
 
     # db
     BASE_DIR = os.path.abspath(os.path.dirname(__file__))
