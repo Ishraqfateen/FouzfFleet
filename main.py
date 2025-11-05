@@ -170,38 +170,45 @@ def create_app():
         posts = Post.query.order_by(Post.created_at.desc()).all()
         return render_template("home_page.html", posts=posts)
 
-    @app.route("/register", methods=["GET", "POST"])
+    @ app.route("/register", methods=["GET", "POST"])
     @limiter.limit("5/minute;15/hour")
     def register():
+        # ✅ Force logout if already logged in
         if current_user.is_authenticated:
-            return redirect(url_for("home"))
+            logout_user()
 
         form = RegisterForm()
 
         if form.validate_on_submit():
-            email = form.email.data.lower().strip()
+            email_l = form.email.data.lower().strip()
 
-            if User.query.filter(func.lower(User.email) == email).first():
+            existing = User.query.filter(func.lower(User.email) == email_l).first()
+            if existing:
                 flash("Email already registered.", "danger")
                 return redirect(url_for("register"))
 
-            user = User(
+            u = User(
                 full_name=form.full_name.data.strip(),
-                email=email,
+                email=email_l,
                 phone=form.phone.data.strip(),
                 dob=form.dob.data,
                 password_hash=generate_password_hash(form.password.data),
                 verified=False
             )
 
-            db.session.add(user)
+            db.session.add(u)
             db.session.commit()
-            send_verification_email(user)
 
-            flash("✅ Account created! Check your CDU email to verify.", "success")
+            send_verification_email(u)
+
+            flash("Account created! Check your CDU email to verify.", "success")
             return redirect(url_for("login"))
 
+        elif request.method == "POST":
+            flash_first_error(form)
+
         return render_template("signup_page.html", form=form)
+
 
     @app.route("/login", methods=["GET", "POST"])
     @limiter.limit("10/minute;50/hour")
