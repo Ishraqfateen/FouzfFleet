@@ -11,15 +11,7 @@
   z-index: -1;
 }
 
-/* Hide image on mobile */
-@media (max-width: 768px) {
-  .bg_img {
-    display: none !important;
-  }
-  body {
-    background-color: #f5e0ba !important;
-  }
-}
+
 
 
 .header{
