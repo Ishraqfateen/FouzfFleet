@@ -2,7 +2,8 @@ from datetime import datetime, timedelta
 import os
 from urllib.parse import urlparse, urljoin
 
-from flask import Flask, render_template, redirect, url_for, flash, request
+from flask import Flask, render_template, redirect, url_for, flash, request, session
+
 from flask_sqlalchemy import SQLAlchemy
 from flask_login import (
     LoginManager, login_user, logout_user, login_required, current_user, UserMixin
@@ -62,12 +63,12 @@ Hey {user.full_name},
 
 Welcome to FouzFleet! 🎉
 
-Click to verify your account:
+Click below to verify your account:
 {verify_url}
 
 This link expires in 1 hour.
 
-If you didn't sign up, ignore this email.
+If you did not sign up, just ignore this email.
 """
     )
     mail.send(msg)
@@ -125,6 +126,13 @@ def create_app():
     # Init
     db.init_app(app)
     login_manager.init_app(app)
+
+    @login_manager.unauthorized_handler
+    def unauthorized():
+        logout_user()
+        session.clear()
+        return redirect(url_for("login"))
+
     limiter.init_app(app)
     login_manager.login_view = "login"
     login_manager.login_message = None
@@ -170,12 +178,12 @@ def create_app():
         posts = Post.query.order_by(Post.created_at.desc()).all()
         return render_template("home_page.html", posts=posts)
 
-    @ app.route("/register", methods=["GET", "POST"])
+    @app.route("/register", methods=["GET", "POST"])
     @limiter.limit("5/minute;15/hour")
     def register():
-        # ✅ Force logout if already logged in
-        if current_user.is_authenticated:
-            logout_user()
+
+        logout_user()
+        session.clear()
 
         form = RegisterForm()
 
@@ -201,7 +209,7 @@ def create_app():
 
             send_verification_email(u)
 
-            flash("Account created! Check your CDU email to verify.", "success")
+            flash("✅ Account created! Check your CDU email to verify.", "success")
             return redirect(url_for("login"))
 
         elif request.method == "POST":
@@ -230,12 +238,18 @@ def create_app():
                     return redirect(url_for("login"))
 
                 login_user(user, remember=True)
+
+                next_page = request.args.get("next")
+                if next_page and is_safe_url(next_page):
+                    return redirect(next_page)
+
                 flash(f"Welcome back, {user.full_name.split()[0]}!", "success")
                 return redirect(url_for("home"))
 
             flash("Invalid email or password.", "danger")
 
         return render_template("login_page.html", form=form)
+
 
     @app.route("/verify/<token>")
     def verify_email(token):
@@ -252,12 +266,14 @@ def create_app():
         flash("✅ Email verified! You may now login.", "success")
         return redirect(url_for("login"))
 
+
     @app.route("/logout")
     @login_required
     def logout():
         logout_user()
         flash("Logged out.", "info")
         return redirect(url_for("login"))
+
 
     @app.route("/post", methods=["GET", "POST"])
     @login_required
@@ -281,6 +297,7 @@ def create_app():
 
         return render_template("posting_page.html", form=form)
 
+
     @app.route("/delete/<int:post_id>")
     @login_required
     def delete_post(post_id):
@@ -294,6 +311,7 @@ def create_app():
 
         flash("Post deleted.", "info")
         return redirect(url_for("home"))
+
 
     @app.route("/profile", methods=["GET", "POST"])
     @login_required
@@ -320,6 +338,7 @@ def create_app():
 
         return render_template("profile_page.html", form=form)
 
+
     with app.app_context():
         db.create_all()
 
@@ -330,6 +349,8 @@ app = create_app()
 
 if __name__ == "__main__":
     app.run(debug=True)
+
+
 
 
 
