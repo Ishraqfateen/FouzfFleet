@@ -182,8 +182,10 @@ def create_app():
     @limiter.limit("5/minute;15/hour")
     def register():
 
-        logout_user()
-        session.clear()
+        # ✅ Only clear if user already logged in
+        if current_user.is_authenticated:
+            logout_user()
+            session.clear()
 
         form = RegisterForm()
 
@@ -216,6 +218,7 @@ def create_app():
             flash_first_error(form)
 
         return render_template("signup_page.html", form=form)
+
 
 
     @app.route("/login", methods=["GET", "POST"])
